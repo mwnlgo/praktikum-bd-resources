@@ -1,6 +1,5 @@
 package com.example.bdsqltester.scenes.admin;
 
-import com.example.bdsqltester.datasources.GradingDataSource;
 import com.example.bdsqltester.datasources.MainDataSource;
 import com.example.bdsqltester.dtos.Assignment;
 import javafx.beans.property.SimpleStringProperty;
@@ -8,13 +7,18 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Node;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
 
+import java.io.IOException;
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.Objects;
 
 public class AdminController {
 
@@ -35,6 +39,11 @@ public class AdminController {
 
     private final ObservableList<Assignment> assignments = FXCollections.observableArrayList();
 
+    Connection connection = MainDataSource.getConnection();
+
+    public AdminController() throws SQLException {
+    }
+
     @FXML
     void initialize() {
         // Set idField to read-only
@@ -45,7 +54,7 @@ public class AdminController {
         // Populate the ListView with assignment names
         refreshAssignmentList();
 
-        assignmentList.setCellFactory(param -> new ListCell<Assignment>() {
+        assignmentList.setCellFactory(param -> new ListCell<>() {
             @Override
             protected void updateItem(Assignment item, boolean empty) {
                 super.updateItem(item, empty);
@@ -132,6 +141,7 @@ public class AdminController {
         answerKeyField.clear();
     }
 
+
     @FXML
     void onSaveClick(ActionEvent event) {
         // If id is set, update, else insert
@@ -178,7 +188,6 @@ public class AdminController {
 
     @FXML
     void onShowGradesClick(ActionEvent event) {
-        // Make sure id is set
         if (idField.getText().isEmpty()) {
             Alert alert = new Alert(Alert.AlertType.ERROR);
             alert.setTitle("Error");
@@ -187,104 +196,170 @@ public class AdminController {
             alert.showAndWait();
             return;
         }
-    }
 
-    @FXML
-    void onTestButtonClick(ActionEvent event) {
-        // Display a window containing the results of the query.
+        long assignmentId = Long.parseLong(idField.getText());
 
-        // Create a new window/stage
-        Stage stage = new Stage();
-        stage.setTitle("Query Results");
-
-        // Display in a table view.
         TableView<ArrayList<String>> tableView = new TableView<>();
-
         ObservableList<ArrayList<String>> data = FXCollections.observableArrayList();
-        ArrayList<String> headers = new ArrayList<>(); // To check if any columns were returned
+        ArrayList<String> headers = new ArrayList<>();
 
-        // Use try-with-resources for automatic closing of Connection, Statement, ResultSet
-        try (Connection conn = GradingDataSource.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(answerKeyField.getText())) {
-
+        try (Connection conn = MainDataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                     "SELECT u.username, g.grade FROM grades g JOIN users u ON g.user_id = u.id WHERE g.assignment_id = ?"
+             )) {
+            stmt.setLong(1, assignmentId);
+            ResultSet rs = stmt.executeQuery();
             ResultSetMetaData metaData = rs.getMetaData();
             int columnCount = metaData.getColumnCount();
 
-            // 1. Get Headers and Create Table Columns
             for (int i = 1; i <= columnCount; i++) {
-                final int columnIndex = i - 1; // Need final variable for lambda (0-based index for ArrayList)
-                String headerText = metaData.getColumnLabel(i); // Use label for potential aliases
-                headers.add(headerText); // Keep track of headers
+                final int columnIndex = i - 1;
+                String headerText = metaData.getColumnLabel(i);
+                headers.add(headerText);
 
                 TableColumn<ArrayList<String>, String> column = new TableColumn<>(headerText);
-
-                // Define how to get the cell value for this column from an ArrayList<String> row object
                 column.setCellValueFactory(cellData -> {
                     ArrayList<String> rowData = cellData.getValue();
-                    // Ensure rowData exists and the index is valid before accessing
                     if (rowData != null && columnIndex < rowData.size()) {
                         return new SimpleStringProperty(rowData.get(columnIndex));
                     } else {
-                        return new SimpleStringProperty(""); // Should not happen with current logic, but safe fallback
+                        return new SimpleStringProperty("");
                     }
                 });
-                column.setPrefWidth(120); // Optional: set a preferred width
+                column.setPrefWidth(150);
                 tableView.getColumns().add(column);
             }
 
-            // 2. Get Data Rows
             while (rs.next()) {
                 ArrayList<String> row = new ArrayList<>();
                 for (int i = 1; i <= columnCount; i++) {
-                    // Retrieve all data as String. Handle NULLs gracefully.
                     String value = rs.getString(i);
-                    row.add(value != null ? value : ""); // Add empty string for SQL NULL
+                    row.add(value != null ? value : "");
                 }
                 data.add(row);
             }
 
-            // 3. Check if any results (headers or data) were actually returned
-            if (headers.isEmpty() && data.isEmpty()) {
-                // Handle case where query might be valid but returns no results
+            if (data.isEmpty()) {
                 Alert infoAlert = new Alert(Alert.AlertType.INFORMATION);
-                infoAlert.setTitle("Query Results");
+                infoAlert.setTitle("No Grades");
                 infoAlert.setHeaderText(null);
-                infoAlert.setContentText("The query executed successfully but returned no data.");
+                infoAlert.setContentText("There are no grades submitted for this assignment yet.");
                 infoAlert.showAndWait();
-                return; // Exit the method, don't show the empty table window
+                return;
             }
 
-            // 4. Set the data items into the table
             tableView.setItems(data);
-
-            // 5. Create layout and scene
-            StackPane root = new StackPane();
-            root.getChildren().add(tableView);
-            Scene scene = new Scene(root, 800, 600); // Adjust size as needed
-
-            // 6. Set scene and show stage
+            StackPane root = new StackPane(tableView);
+            Scene scene = new Scene(root, 400, 300);
+            Stage stage = new Stage();
+            stage.setTitle("Grades for " + nameField.getText());
             stage.setScene(scene);
             stage.show();
 
         } catch (SQLException e) {
-            // Log the error and show an alert to the user
-            e.printStackTrace(); // Print stack trace to console/log for debugging
+            e.printStackTrace();
             Alert errorAlert = new Alert(Alert.AlertType.ERROR);
             errorAlert.setTitle("Database Error");
-            errorAlert.setHeaderText("Failed to execute query or retrieve results.");
-            errorAlert.setContentText("SQL Error: " + e.getMessage());
-            errorAlert.showAndWait();
-        } catch (Exception e) {
-            // Catch other potential exceptions (e.g., class loading if driver not found)
-            e.printStackTrace(); // Print stack trace to console/log for debugging
-            Alert errorAlert = new Alert(Alert.AlertType.ERROR);
-            errorAlert.setTitle("Error");
-            errorAlert.setHeaderText("An unexpected error occurred.");
+            errorAlert.setHeaderText("Could not retrieve grades.");
             errorAlert.setContentText(e.getMessage());
             errorAlert.showAndWait();
         }
-    } // End of onTestButtonClick method
+    }
 
 
+    @FXML
+    void onTestButtonClick() {
+        String query = answerKeyField.getText();
+        try {
+            if (connection == null) {
+                showAlert("Error", "Database connection is not available.");
+                return;
+            }
+            Statement stmt = connection.createStatement();
+            ResultSet rs = stmt.executeQuery(query);
+            String resultString = resultSetToString(rs);
+            showAlert("Query Output", resultString);
+        } catch (SQLException e) {
+            showAlert("Query Error", e.getMessage());
+        }
+    }
+
+    private String resultSetToString(ResultSet rs) throws SQLException {
+        StringBuilder sb = new StringBuilder();
+        ResultSetMetaData md = rs.getMetaData();
+        int colCount = md.getColumnCount();
+        while (rs.next()) {
+            for (int i = 1; i <= colCount; i++) {
+                sb.append(rs.getString(i)).append("\t");
+            }
+            sb.append("\n");
+        }
+        return sb.toString().trim();
+    }
+
+    private void showAlert(String title, String message) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle(title);
+        alert.setContentText(message);
+        alert.showAndWait();
+    }
+
+    @FXML
+    private void onBackClick(ActionEvent event) throws IOException {
+        Parent root = FXMLLoader.load(Objects.requireNonNull(getClass().getResource("/com/example/bdsqltester/login-view.fxml")));
+        Stage stage = (Stage) ((Node) event.getSource()).getScene().getWindow();
+        stage.setTitle("Login Page");
+        stage.setScene(new Scene(root));
+        stage.show();
+    }
+
+    @FXML
+    private void onDeleteClick(ActionEvent event) {
+        if (idField.getText().isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText("No Assignment Selected");
+            alert.setContentText("Please select an assignment to delete.");
+            alert.showAndWait();
+            return;
+        }
+
+        long assignmentId = Long.parseLong(idField.getText());
+
+        Alert confirmationAlert = new Alert(Alert.AlertType.CONFIRMATION);
+        confirmationAlert.setTitle("Confirm Deletion");
+        confirmationAlert.setHeaderText("Are you sure you want to delete this assignment?");
+        confirmationAlert.setContentText("This action cannot be undone.");
+        confirmationAlert.showAndWait().ifPresent(response -> {
+            if (response == ButtonType.OK) {
+                try (Connection conn = MainDataSource.getConnection()) {
+                    String deleteQuery = "DELETE FROM assignments WHERE id = ?";
+                    PreparedStatement stmt = conn.prepareStatement(deleteQuery);
+                    stmt.setLong(1, assignmentId);
+                    stmt.executeUpdate();
+
+                    refreshAssignmentList();
+
+                    idField.clear();
+                    nameField.clear();
+                    instructionsField.clear();
+                    answerKeyField.clear();
+
+                    Alert successAlert = new Alert(Alert.AlertType.INFORMATION);
+                    successAlert.setTitle("Success");
+                    successAlert.setHeaderText("Assignment Deleted");
+                    successAlert.setContentText("The assignment has been successfully deleted.");
+                    successAlert.showAndWait();
+
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                    Alert errorAlert = new Alert(Alert.AlertType.ERROR);
+                    errorAlert.setTitle("Database Error");
+                    errorAlert.setHeaderText("Failed to delete assignment");
+                    errorAlert.setContentText(e.getMessage());
+                    errorAlert.showAndWait();
+                }
+            }
+        });
+    }
 }

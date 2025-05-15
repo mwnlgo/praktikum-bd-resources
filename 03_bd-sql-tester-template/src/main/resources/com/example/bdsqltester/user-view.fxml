@@ -56,7 +56,6 @@
 
                 <HBox alignment="CENTER_RIGHT" prefHeight="20.0" prefWidth="540.0" spacing="10">
                     <children>
-                    <Button fx:id="backButton" onAction="#onBackClick" text="Back" />
                         <Button onAction="#onTestButtonClick" prefHeight="32.0" prefWidth="64.0" text="Test" />
                         <Button onAction="#onSubmitClick" prefHeight="35.0" prefWidth="72.0" text="Submit" />
                     </children>

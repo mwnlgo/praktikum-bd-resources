@@ -4,17 +4,10 @@ import com.example.bdsqltester.datasources.MainDataSource;
 import com.example.bdsqltester.dtos.Assignment;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Node;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.input.MouseEvent;
-import javafx.stage.Stage;
 
-import java.io.IOException;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -68,7 +61,6 @@ public class UserController {
             }
 
             assignmentList.setItems(assignments);
-
         } catch (SQLException e) {
             showAlert("Error", "Failed to load assignments: " + e.getMessage());
             e.printStackTrace();
@@ -182,10 +174,8 @@ public class UserController {
                 insertStmt.setInt(3, grade);
                 insertStmt.executeUpdate();
             }
-
             gradeLabel.setText("Score: " + grade);
             showAlert("Submission Result", "You received a score of: " + grade);
-
         } catch (SQLException e) {
             showAlert("Error", e.getMessage());
         }
@@ -216,13 +206,4 @@ public class UserController {
         alert.setContentText(message);
         alert.showAndWait();
     }
-
-    @FXML
-    private void onBackClick(ActionEvent event) throws IOException {
-        Parent root = FXMLLoader.load(getClass().getResource("/com/example/bdsqltester/login-view.fxml"));
-        Stage stage = (Stage) ((Node) event.getSource()).getScene().getWindow();
-        stage.setTitle("Login Page");
-        stage.setScene(new Scene(root));
-        stage.show();
-    }
-    }
+}
